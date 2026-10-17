@@ -69,7 +69,22 @@
   @media (max-width: 480px) {
     #cards { grid-template-columns: repeat(3, 1fr); max-width: 280px; gap: 14px; }
   }
-  .card { cursor: pointer; transition: opacity 0.4s, transform 0.1s; }
+  .card {
+    aspect-ratio: 3 / 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--die);
+    border: 1px solid var(--die-edge);
+    border-radius: 10px;
+    color: var(--pip);
+    font: inherit;
+    font-size: 1.8rem;
+    font-variant-numeric: tabular-nums;
+    padding: 0;
+    cursor: pointer;
+    transition: opacity 0.4s, transform 0.1s;
+  }
   .card:active { transform: scale(0.94); }
   #cards.locked .card { opacity: 0.35; pointer-events: none; }
   .card.wrong { animation: nudge 0.3s; }
@@ -288,10 +303,9 @@
 
   buildDie(mainDie);
   for (let n = 1; n <= 6; n++) {
-    const card = document.createElement('div');
-    card.className = 'die card';
-    buildDie(card);
-    showFace(card, n);
+    const card = document.createElement('button');
+    card.className = 'card';
+    card.textContent = n;
     card.addEventListener('click', () => onCard(n, card));
     cardsEl.appendChild(card);
   }
