@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d14">
+<title>Sleep Dice</title>
+<style>
+  :root {
+    --bg: #0b0d14;
+    --fg: #8a90a6;
+    --muted: #4a4f63;
+    --die: #1c2030;
+    --die-edge: #262b3e;
+    --pip: #9aa0b8;
+    --accent: #3a4160;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    overflow: hidden;
+  }
+  .screen { display: none; flex-direction: column; align-items: center; gap: 48px; width: 100%; padding: 16px; }
+  .screen.active { display: flex; }
+
+  #start-btn {
+    font-size: 1.6rem;
+    padding: 32px 48px;
+    border-radius: 28px;
+    border: 1px solid var(--die-edge);
+    background: var(--die);
+    color: var(--fg);
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  #start-btn:active { transform: scale(0.97); }
+
+  /* A die: 3x3 grid of pip slots */
+  .die {
+    display: grid;
+    grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+    background: var(--die);
+    border: 1px solid var(--die-edge);
+    border-radius: 18%;
+    padding: 14%;
+    aspect-ratio: 1;
+  }
+  .pip { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  .pip::after {
+    content: "";
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    background: var(--pip);
+    opacity: 0;
+  }
+  .pip.on::after { opacity: 1; }
+
+  #main-die { width: min(40vw, 170px); }
+  #main-die.rolling { animation: tumble 0.35s linear infinite; }
+  @keyframes tumble {
+    0%   { transform: rotate(0deg)   translate(0, 0); }
+    25%  { transform: rotate(12deg)  translate(4px, -3px); }
+    50%  { transform: rotate(-8deg)  translate(-3px, 2px); }
+    75%  { transform: rotate(6deg)   translate(2px, 3px); }
+    100% { transform: rotate(0deg)   translate(0, 0); }
+  }
+
+  #cards {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    width: 100%;
+    max-width: 520px;
+  }
+  @media (max-width: 420px) {
+    #cards { grid-template-columns: repeat(3, 1fr); max-width: 260px; gap: 14px; }
+  }
+  .card { cursor: pointer; transition: opacity 0.4s, transform 0.1s; padding: 12%; }
+  .card:active { transform: scale(0.94); }
+  #cards.locked .card { opacity: 0.35; pointer-events: none; }
+  .card.wrong { animation: nudge 0.3s; }
+  @keyframes nudge {
+    25% { transform: translateX(-4px); }
+    75% { transform: translateX(4px); }
+  }
+
+  #stop-btn {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top));
+    right: 16px;
+    background: none;
+    border: 1px solid var(--die-edge);
+    color: var(--muted);
+    border-radius: 12px;
+    padding: 8px 14px;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<section id="start" class="screen active">
+  <button id="start-btn">I want to sleep</button>
+</section>
+
+<section id="game" class="screen">
+  <button id="stop-btn">Stop</button>
+  <div id="main-die" class="die"></div>
+  <div id="cards" class="locked"></div>
+</section>
+
+<script>
+  // Which of the 9 grid slots (0-8, row by row) hold a pip for each face
+  const FACES = {
+    1: [4],
+    2: [2, 6],
+    3: [2, 4, 6],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8],
+  };
+
+  const startScreen = document.getElementById('start');
+  const gameScreen = document.getElementById('game');
+  const mainDie = document.getElementById('main-die');
+  const cardsEl = document.getElementById('cards');
+
+  let audioCtx = null;
+  let current = 0;
+  let waitTimer = null;
+  let rollTimer = null;
+  let running = false;
+
+  function buildDie(el) {
+    for (let i = 0; i < 9; i++) {
+      const pip = document.createElement('div');
+      pip.className = 'pip';
+      el.appendChild(pip);
+    }
+  }
+
+  function showFace(el, n) {
+    const on = FACES[n];
+    el.querySelectorAll('.pip').forEach((pip, i) => pip.classList.toggle('on', on.includes(i)));
+  }
+
+  function randomFace(except) {
+    let n;
+    do { n = 1 + Math.floor(Math.random() * 6); } while (n === except);
+    return n;
+  }
+
+  // Soft two-note chime, generated in the browser (no audio files)
+  function playNotify() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    [659.25, 987.77].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const t = now + i * 0.12;
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.18, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + 0.65);
+    });
+  }
+
+  function roll() {
+    cardsEl.classList.add('locked');
+    mainDie.classList.add('rolling');
+    const duration = 1400 + Math.random() * 600;
+    const started = performance.now();
+    let face = current;
+
+    // Change faces quickly at first, then slow down before settling
+    function step() {
+      const elapsed = performance.now() - started;
+      if (!running) return;
+      if (elapsed >= duration) {
+        mainDie.classList.remove('rolling');
+        current = randomFace();
+        showFace(mainDie, current);
+        cardsEl.classList.remove('locked');
+        playNotify();
+        return;
+      }
+      face = randomFace(face);
+      showFace(mainDie, face);
+      rollTimer = setTimeout(step, 60 + (elapsed / duration) * 180);
+    }
+    step();
+  }
+
+  function onCard(n, cardEl) {
+    if (cardsEl.classList.contains('locked')) return;
+    if (n === current) {
+      cardsEl.classList.add('locked');
+      const delay = 5000 + Math.random() * 10000;
+      waitTimer = setTimeout(roll, delay);
+    } else {
+      playNotify();
+      cardEl.classList.remove('wrong');
+      void cardEl.offsetWidth;
+      cardEl.classList.add('wrong');
+    }
+  }
+
+  function start() {
+    // Audio must be created/resumed from a user tap, especially on iOS
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    audioCtx.resume();
+    running = true;
+    startScreen.classList.remove('active');
+    gameScreen.classList.add('active');
+    current = randomFace();
+    showFace(mainDie, current);
+    roll();
+  }
+
+  function stop() {
+    running = false;
+    clearTimeout(waitTimer);
+    clearTimeout(rollTimer);
+    mainDie.classList.remove('rolling');
+    cardsEl.classList.add('locked');
+    gameScreen.classList.remove('active');
+    startScreen.classList.add('active');
+  }
+
+  buildDie(mainDie);
+  for (let n = 1; n <= 6; n++) {
+    const card = document.createElement('div');
+    card.className = 'die card';
+    buildDie(card);
+    showFace(card, n);
+    card.addEventListener('click', () => onCard(n, card));
+    cardsEl.appendChild(card);
+  }
+
+  document.getElementById('start-btn').addEventListener('click', start);
+  document.getElementById('stop-btn').addEventListener('click', stop);
+</script>
+</body>
+</html>
