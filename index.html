@@ -90,6 +90,16 @@
     font-size: 0.85rem;
     cursor: pointer;
   }
+
+  #counter {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top));
+    left: 16px;
+    padding: 8px 2px;
+    color: var(--muted);
+    font-size: 1.1rem;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
 <body>
@@ -99,6 +109,7 @@
 </section>
 
 <section id="game" class="screen">
+  <div id="counter">0</div>
   <button id="stop-btn">Stop</button>
   <div id="main-die" class="die"></div>
   <div id="cards" class="locked"></div>
@@ -119,12 +130,14 @@
   const gameScreen = document.getElementById('game');
   const mainDie = document.getElementById('main-die');
   const cardsEl = document.getElementById('cards');
+  const counterEl = document.getElementById('counter');
 
   let audioCtx = null;
   let current = 0;
   let waitTimer = null;
   let rollTimer = null;
   let running = false;
+  let correctCount = 0;
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const SLOT_POS = [25, 50, 75];
@@ -175,6 +188,22 @@
     });
   }
 
+  // Short, quiet tick for a correct pick
+  function playTick() {
+    if (!audioCtx) return;
+    const t = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1800, t);
+    osc.frequency.exponentialRampToValueAtTime(900, t + 0.04);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + 0.07);
+  }
+
   function roll() {
     cardsEl.classList.add('locked');
     mainDie.classList.add('rolling');
@@ -205,6 +234,9 @@
     if (cardsEl.classList.contains('locked')) return;
     if (n === current) {
       cardsEl.classList.add('locked');
+      playTick();
+      correctCount++;
+      counterEl.textContent = correctCount;
       const delay = 5000 + Math.random() * 10000;
       waitTimer = setTimeout(roll, delay);
     } else {
@@ -220,6 +252,8 @@
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     audioCtx.resume();
     running = true;
+    correctCount = 0;
+    counterEl.textContent = correctCount;
     startScreen.classList.remove('active');
     gameScreen.classList.add('active');
     current = randomFace();
