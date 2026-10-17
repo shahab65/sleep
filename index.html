@@ -91,6 +91,18 @@
     cursor: pointer;
   }
 
+  #rest {
+    display: none;
+    max-width: 320px;
+    text-align: center;
+    font-size: 1.3rem;
+    line-height: 1.6;
+    color: var(--fg);
+  }
+  #game.resting #rest { display: block; }
+  #game.resting #main-die,
+  #game.resting #cards { display: none; }
+
   #counter {
     position: fixed;
     top: max(16px, env(safe-area-inset-top));
@@ -113,6 +125,7 @@
   <button id="stop-btn">Stop</button>
   <div id="main-die" class="die"></div>
   <div id="cards" class="locked"></div>
+  <p id="rest">Do not look at the screen and listen for the tick sound</p>
 </section>
 
 <script>
@@ -205,6 +218,7 @@
   }
 
   function roll() {
+    gameScreen.classList.remove('resting');
     cardsEl.classList.add('locked');
     mainDie.classList.add('rolling');
     const duration = 1400 + Math.random() * 600;
@@ -237,6 +251,7 @@
       playTick();
       correctCount++;
       counterEl.textContent = correctCount;
+      gameScreen.classList.add('resting');
       const delay = 5000 + Math.random() * 10000;
       waitTimer = setTimeout(roll, delay);
     } else {
@@ -267,7 +282,7 @@
     clearTimeout(rollTimer);
     mainDie.classList.remove('rolling');
     cardsEl.classList.add('locked');
-    gameScreen.classList.remove('active');
+    gameScreen.classList.remove('active', 'resting');
     startScreen.classList.add('active');
   }
 
